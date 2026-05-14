@@ -27,6 +27,14 @@ collector.log
 *.tmp
 temp_*
 
+# Paper Drafts and Archives
+paper/
+Research_Paper_Drafts/
+Thesis\ Archive/
+Results/*.md
+rebuild_guide.md
+
+
 # Large files (exceeding GitHub 100MB limit)
 Old stuff/
 **/*.csv
