@@ -1,0 +1,41 @@
+# LaTeX build artifacts
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.toc
+*.blg
+*.bbl
+*.run.xml
+*.bcf
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.ipynb_checkpoints/
+
+# Data/Logs
+collector.log
+*.log
+*.tmp
+temp_*
+
+# Large files (exceeding GitHub 100MB limit)
+Old stuff/
+**/*.csv
+!**/*_final.csv
+!**/*_stats.csv
+!**/*_results.txt
+!**/training_data_*.csv
+
+# Whitelist specific small datasets if needed
+!final_sockshop_dataset.csv
+!final_giant_thesis_dataset.csv
+!thesis_ready_data.csv

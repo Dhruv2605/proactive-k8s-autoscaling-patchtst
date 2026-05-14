@@ -1,0 +1,35 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\begin{document}
+
+\title{Proactive Kubernetes Autoscaling Using Patch-Based Transformer Models for Latency-Sensitive Microservices}
+
+\author{\IEEEauthorblockN{Dhruv\IEEEauthorrefmark{1} and Sougata\IEEEauthorrefmark{2}}
+\IEEEauthorblockA{\IEEEauthorrefmark{1}\IEEEauthorrefmark{2}\textit{Department of Computer Science} \\
+\textit{Indian Institute of Technology Delhi}\\
+New Delhi, India \\
+dhruv@iitd.ac.in}
+}
+
+\maketitle
+
+\begin{abstract}
+Kubernetes Horizontal Pod Autoscaler (HPA) relies on a reactive control loop that triggers scaling only after resource thresholds are breached. Under bursty traffic, this feedback-driven design incurs a systemic lag of 60--90 seconds---spanning metric scraping, threshold evaluation, and pod initialization---leaving latency-sensitive microservices exposed to SLO violations during the critical surge window.
+
+We propose replacing this reactive loop with a proactive controller built on PatchTST, a patch-based Transformer that forecasts CPU demand from a 60-second lookback window and pre-provisions pods before traffic spikes materialize. We evaluate our approach on two structurally heterogeneous benchmarks deployed on Google Kubernetes Engine: Google Online Boutique (10 services, Go/Python; 28,108 observations over 117 hours) and Weaveworks Sock Shop (13+ services, Java/Node.js/Go; 7,147 observations over 10 hours).
+
+PatchTST achieves an RMSE of 0.018 on Online Boutique and 0.092 on Sock Shop, reducing mean absolute error by 98.4\% and 85.5\% over the 60-second-lag HPA baseline. The proactive controller detects 98.2\% and 89.5\% of traffic spikes on the two benchmarks respectively, with false positive rates below 5\%, compared to HPA's 52\% recall and 43--48\% wasted provisioning. In live deployment, P95 latency drops from 1,020\,ms to 215\,ms---a 79\% reduction. A zero-shot transfer experiment, where a model trained solely on Online Boutique is tested on Sock Shop without fine-tuning, still yields a 69\% improvement over HPA, confirming that the learned temporal representations generalize across distinct microservice architectures.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Kubernetes, Autoscaling, PatchTST, Transformer, Time-Series Forecasting, Microservices, Transfer Learning, Cloud Engineering
+\end{IEEEkeywords}
+
+\end{document}

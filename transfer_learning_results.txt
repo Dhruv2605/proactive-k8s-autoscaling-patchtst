@@ -1,0 +1,4 @@
+Source: Google Boutique (28k)
+Target: Sock Shop
+MSE: 0.025840
+MAE: 0.158264
