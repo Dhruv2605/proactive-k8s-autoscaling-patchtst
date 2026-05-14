@@ -14,7 +14,7 @@
 
 \begin{document}
 
-\title{Proactive Kubernetes Autoscaling Using Patch-Based Transformer Models for Latency-Sensitive Microservices}
+\title{Transferable Proactive Autoscaling for Kubernetes Microservices Using Patch-Based Temporal Transformers}
 
 \author{
 \IEEEauthorblockN{Dhruv Bhogaonkar\IEEEauthorrefmark{1} and Sougata Mukherjea\IEEEauthorrefmark{2}}
@@ -50,6 +50,8 @@ The impact of such latency spikes is not merely technical but directly affects b
     \item A high-fidelity dataset of 35,255 temporally aligned observations, capturing the interplay between traffic patterns, resource consumption, and end-to-end latency across diverse microservice runtimes.
 \end{enumerate}
 
+To support reproducibility and further research, our complete source code, deployment manifests, and high-fidelity datasets are publicly available on GitHub at \url{https://github.com/Dhruv2605/proactive-k8s-autoscaling-patchtst}.
+
 The remainder of this paper is organized as follows: Section~\ref{sec:related} surveys related work in autoscaling and time-series forecasting. Section~\ref{sec:architecture} describes the system architecture and monitoring pipeline. Section~\ref{sec:methodology} details the PatchTST-based prediction methodology. Section~\ref{sec:results} presents our experimental results, including accuracy benchmarks and live cluster performance. Section~\ref{sec:discussion} discusses the implications of our findings. Section~\ref{sec:limitations} outlines limitations, and Section~\ref{sec:conclusion} concludes.
 
 % ============================================================
@@ -67,7 +69,7 @@ To overcome the limitations of reactive scaling, researchers have explored vario
 Deep learning architectures, particularly Recurrent Neural Networks (RNNs) and Long Short-Term Memory (LSTM) networks, have shown promise in capturing complex temporal dependencies~\cite{imdoukh2020machine}. LSTMs are effective at learning from sequence data but suffer from high computational overhead and the vanishing gradient problem when dealing with long-range dependencies. Reinforcement Learning (RL) approaches, such as Deep Q-Networks (DQN), offer an adaptive policy-based alternative that learns through interaction with the cluster environment~\cite{qiu2020firm}. While powerful, RL models require extensive training phases and can exhibit instability when encountering unseen traffic patterns.
 
 \subsection{Transformers in Time-Series Forecasting}
-The Transformer architecture, originally designed for natural language processing~\cite{vaswani2017attention}, has recently been adapted for time-series forecasting with remarkable success. Models like Informer and Autoformer introduced specialized attention mechanisms to handle long-term sequences. PatchTST~\cite{nie2023patchtst} represents a significant advancement by introducing two key innovations: patching and channel independence. By segmenting time-series into subseries patches, the model preserves local semantic information while reducing the computational complexity of the attention mechanism. Crucially for cloud environments, patching allows the model to aggregate short-term fluctuations in Prometheus metrics into stable local temporal patterns, improving robustness against transient monitoring jitter.
+The Transformer architecture, originally designed for natural language processing~\cite{vaswani2017attention}, has recently been adapted for time-series forecasting with remarkable success. Models like Informer and Autoformer introduced specialized attention mechanisms to handle long-term sequences. Transformer-based approaches, such as the Anomaly Transformer~\cite{xu2022anomaly}, leverage self-attention to model long-range dependencies for Anomaly detection. PatchTST~\cite{nie2023patchtst} represents a significant advancement by introducing two key innovations: patching and channel independence. By segmenting time-series into subseries patches, the model preserves local semantic information while reducing the computational complexity of the attention mechanism. Crucially for cloud environments, patching allows the model to aggregate short-term fluctuations in Prometheus metrics into stable local temporal patterns, improving robustness against transient monitoring jitter.
 
 \subsection{The Need for Real-World Evaluation}
 A significant portion of existing research in predictive autoscaling relies on historical traces (e.g., Google or Alibaba cluster traces) and simulation environments~\cite{rzadca2020autopilot, yan2021hansel}. While simulators are valuable for initial validation, they often fail to capture the complex, non-linear performance characteristics of real-world networking stacks, pod startup latencies, and Prometheus metric jitter. Our work distinguishes itself by evaluating the proposed framework on a live production-grade cluster (GKE), providing empirical evidence of latency mitigation in a non-simulated environment. Furthermore, while many studies focus on monolithic workloads or single-service scaling, we explicitly evaluate transferability across two structurally distinct microservice benchmarks, addressing the challenge of model generalizability in heterogeneous cloud environments.
@@ -167,15 +169,25 @@ The AI-based autoscaling controller operates as an external loop that intercepts
 \section{Methodology}\label{sec:methodology}
 % ============================================================
 
-\subsection{Dataset Collection and Preprocessing}
-We generated high-fidelity datasets by subjecting the GKE cluster to continuous load for 127 hours across both benchmarks. 
+\subsection{Dataset Construction and Characteristics}
+Given the scarcity of publicly available, high-fidelity datasets that temporally align microservice traffic load with granular resource utilization and end-to-end latency, we constructed a custom dataset. The lack of such datasets is a recognized bottleneck in cloud computing research; existing publicly available traces (such as the widely used Google Cluster Data or Alibaba Cluster Traces) often provide metrics at a coarse 5-minute resolution and typically abstract away the underlying microservice topology and application-level latency. Such coarse granularity is insufficient for studying the micro-bursts and rapid autoscaling dynamics characteristic of modern cloud-native architectures.
+
+To address this gap, we generated our datasets by subjecting a real-world GKE cluster to continuous, systematically designed load for over 127 hours across two distinct application benchmarks. Data collection was orchestrated via a custom Python controller that operated on two parallel tracks:
+\begin{enumerate}
+    \item \textbf{Resource Polling}: The controller synchronously queried the Prometheus HTTP API at an aggressive 2-second resolution. We extracted container-level metrics leveraging \texttt{kube-state-metrics} and \texttt{cAdvisor}, capturing precise CPU core usage and memory consumption in bytes. This high-frequency polling is critical for capturing the transient spikes that a standard 15-to-30-second scraping interval would otherwise smooth out.
+    \item \textbf{Performance Logging}: Simultaneously, the Locust distributed load generator recorded application-level metrics, specifically Queries Per Second (QPS) and 95th-percentile (P95) response latency in milliseconds.
+\end{enumerate}
+
+A significant engineering challenge in constructing this dataset involved the temporal alignment of these asynchronous data streams. Locust records metrics at the exact moment a request batch completes, while Prometheus data represents an aggregation over the scrape interval. To reconcile this, we developed a data alignment pipeline using pandas that merged the two streams based on standardized Unix timestamps, employing a strict 15-second tolerance window to guarantee causal validity between an observed traffic surge and its corresponding resource footprint.
 
 \begin{itemize}
-    \item \textbf{Online Boutique Dataset}: 28,108 observations were temporally aligned with Locust traffic logs using a 15-second tolerance window. This dataset captures 117 hours of varied traffic patterns.
-    \item \textbf{Sock Shop Dataset}: 7,147 observations were collected over 10 hours, focusing on more complex service interactions and runtime-specific resource profiles.
+    \item \textbf{Online Boutique Dataset}: This subset contains 28,108 high-resolution observations collected over 117 hours of continuous operation. It captures a wide spectrum of workload behaviors, including extended seasonal fluctuations, sudden flash-crowd events, and the subsequent recovery phases of the autoscaler. It provides a robust, long-term baseline for training forecasting models.
+    \item \textbf{Sock Shop Dataset}: Comprising 7,147 observations collected over 10 hours, this subset is specifically curated to capture intricate inter-service communication overhead. Because the Sock Shop benchmark features a deeper dependency mesh (e.g., recursive calls between payment and shipping services), the resulting dataset is invaluable for studying how resource starvation in one service cascades through the mesh and impacts end-to-end latency.
 \end{itemize}
 
-The raw metrics were cleaned by removing idle periods and aligning asynchronous logs. The resulting features include Queries Per Second (QPS), P95 Latency (ms), Container Memory (bytes), and the target CPU cores. To prepare the data for the PatchTST model, we used a sliding window approach with a window size of 30 and a stride of 1, creating a training set of overlapping temporal snapshots. To prevent temporal data leakage, datasets were split chronologically rather than randomly: the 117-hour Boutique dataset and the 10-hour Sock Shop dataset were both split into the first 80\% for training, the next 10\% for validation, and the final 10\% for testing.
+The raw metrics underwent a rigorous cleaning phase. We removed idle periods where traffic was zero, filtered out transient anomalies caused by Locust node restarts, and applied forward-filling to handle any rare dropped packets from the Prometheus scraper. Finally, to prepare the data for the PatchTST model, we applied Min-Max normalization to bound all features between $[0, 1]$ and utilized a sliding window approach. A window size of 30 steps (representing 60 seconds of historical context) with a stride of 1 was used to create a rich training set of overlapping temporal snapshots. 
+
+To completely prevent temporal data leakage—a common pitfall in time-series machine learning where future information inadvertently leaks into the training set—the datasets were strictly split chronologically. For both the Boutique and Sock Shop datasets, the first 80\% of the timeline was designated for training, the subsequent 10\% for validation, and the final 10\% for out-of-sample testing. By open-sourcing this dataset, we aim to accelerate future research in predictive cloud resource management, offering researchers a granular, realistic testbed that eliminates the need to rely on coarse simulations.
 
 \subsection{Traffic Generation Models}
 To simulate realistic and stressful cloud environments, we developed two primary traffic patterns using the Locust distributed load testing framework:
@@ -208,7 +220,7 @@ To ensure the scientific rigor of our results, we followed a strict experimental
 % ============================================================
 
 \subsection{Prediction Accuracy Benchmark}
-We first evaluate the predictive accuracy of PatchTST against three common deep learning baselines: Long Short-Term Memory (LSTM), Bidirectional LSTM (BiLSTM), and Gated Recurrent Units (GRU). Baseline models were configured with a single hidden layer of 64 units, a 30-step lookback, and trained for 10 epochs using the Adam optimizer with early stopping (patience=3). While advanced reactive frameworks like KEDA or VPA exist, we selected the native HPA as the primary baseline to explicitly isolate the value of \textit{temporal prediction} over \textit{threshold reaction}. For the HPA, which does not inherently output a ``prediction'', we compute its equivalent RMSE by treating its reactive scaling state (current CPU utilization shifted by the metric lag) as its forecast. Table~\ref{tab:results} summarizes the performance across both benchmarks.
+We first evaluate the predictive accuracy of PatchTST against three common deep learning baselines: Long Short-Term Memory (LSTM), Bidirectional LSTM (BiLSTM), and Gated Recurrent Units (GRU). Baseline models were configured with a single hidden layer of 64 units, a 30-step lookback, and trained for 10 epochs using the Adam optimizer with early stopping (patience=3). While advanced reactive frameworks like KEDA or VPA exist, we selected the native HPA as the primary baseline to explicitly isolate the value of \textit{temporal prediction} over \textit{threshold reaction}. For the HPA, which does not inherently output a ``prediction'', we compute its proxy forecasting error by treating its reactive scaling state (current CPU utilization shifted by the metric lag) as its forecast. Table~\ref{tab:results} summarizes the performance across both benchmarks.
 
 \begin{table}[htbp]
 \caption{Multi-Model Prediction Accuracy (RMSE)}
@@ -338,6 +350,9 @@ While the proactive controller offers significant performance gains, it introduc
     \item \textbf{Data Quality Dependency}: The model's reliability is tied to the resolution of Prometheus metrics. High-resolution scraping (2s) is necessary for high accuracy but increases the storage and processing load on the monitoring stack.
 \end{enumerate}
 
+\subsection{Threats to Validity}
+While our empirical evaluation demonstrates significant performance gains, certain threats to validity remain. Construct validity is primarily threatened by our reliance on simulated Locust traffic patterns, which, despite being modeled on realistic diurnal and bursty behaviors, may not encapsulate the full complexity of production user behavior. Internal validity is supported by running multiple independent trials ($n=5$) to mitigate cloud infrastructure variance; however, transient network jitter or noisy neighbor effects on the GKE platform cannot be entirely eliminated. External validity concerns the generalizability of our findings. Although we evaluated two structurally distinct microservice applications (Online Boutique and Sock Shop) to ensure broad applicability, both represent typical e-commerce and retail workloads. Our results may not directly translate to heavily stateful architectures, such as large-scale distributed databases or high-frequency trading systems, where latency budgets and resource bottlenecks differ substantially.
+
 % ============================================================
 \section{Limitations and Future Work}\label{sec:limitations}
 % ============================================================
@@ -404,6 +419,8 @@ These results suggest that PatchTST is a promising approach for augmenting nativ
 \bibitem{online_boutique} Google Cloud, ``Online Boutique: Cloud-Native Microservices Demo Application,'' GitHub, 2024.
 
 \bibitem{sock_shop} Weaveworks, ``Microservices-Demo: Sock Shop,'' GitHub, 2024.
+
+\bibitem{xu2022anomaly} J. Xu et al., ``Anomaly Transformer: Time Series Anomaly Detection with Association Discrepancy,'' in \textit{Proc. ICLR}, 2022.
 
 \end{thebibliography}
 
